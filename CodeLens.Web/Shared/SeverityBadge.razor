@@ -1,0 +1,16 @@
+@using CodeLens.Web.Models.Reviews
+
+<span class="badge @CssClass">@Severity.ToString()</span>
+
+@code {
+    [Parameter, EditorRequired] public Severity Severity { get; set; }
+
+    private string CssClass => Severity switch
+    {
+        Severity.Critical => "bg-danger",
+        Severity.Major    => "bg-warning text-dark",
+        Severity.Minor    => "bg-info text-dark",
+        Severity.Info     => "bg-secondary",
+        _                 => "bg-secondary"
+    };
+}

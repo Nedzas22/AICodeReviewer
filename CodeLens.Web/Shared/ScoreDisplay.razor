@@ -1,0 +1,16 @@
+<div class="score-display @ColorClass" title="AI Quality Score">
+    <span class="score-value">@Score</span>
+    <span class="score-label">/100</span>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public int Score { get; set; }
+
+    private string ColorClass => Score switch
+    {
+        >= 80 => "score-green",
+        >= 60 => "score-yellow",
+        >= 40 => "score-orange",
+        _     => "score-red"
+    };
+}

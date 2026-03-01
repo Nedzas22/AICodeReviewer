@@ -1,0 +1,228 @@
+@page "/reviews/{Id:guid}"
+@attribute [Authorize]
+@inject IReviewService ReviewService
+@inject NavigationManager Navigation
+
+<PageTitle>@(_review?.Title ?? "Review") — CodeLens</PageTitle>
+
+@if (_loading)
+{
+    <LoadingSpinner Message="Loading review..." />
+}
+else if (_errorMessage is not null)
+{
+    <div class="alert alert-danger d-flex align-items-center gap-2">
+        <i class="bi bi-exclamation-circle"></i>
+        <span class="flex-grow-1">@_errorMessage</span>
+        <a href="/dashboard" class="btn btn-sm btn-outline-danger">Back</a>
+    </div>
+}
+else if (_review is not null)
+{
+    <!-- Header -->
+    <div class="mb-4">
+        <nav aria-label="breadcrumb" class="mb-2">
+            <ol class="breadcrumb">
+                <li class="breadcrumb-item"><a href="/dashboard">Dashboard</a></li>
+                <li class="breadcrumb-item active" aria-current="page">Review Detail</li>
+            </ol>
+        </nav>
+
+        <div class="d-flex justify-content-between align-items-start flex-wrap gap-3">
+            <div>
+                <h1 class="h3 fw-bold mb-1">@_review.Title</h1>
+                <div class="d-flex flex-wrap gap-2 align-items-center">
+                    <span class="badge bg-secondary">@_review.Language.ToDisplayName()</span>
+                    <StatusBadge Status="_review.Status" />
+                    @if (!string.IsNullOrEmpty(_review.AiModel))
+                    {
+                        <small class="text-muted">via @_review.AiModel</small>
+                    }
+                    <small class="text-muted">
+                        <i class="bi bi-clock me-1"></i>
+                        @_review.CreatedAt.ToLocalTime().ToString("MMM dd, yyyy HH:mm")
+                    </small>
+                </div>
+            </div>
+            <div class="d-flex align-items-center gap-2">
+                @if (_review.OverallScore.HasValue)
+                {
+                    <ScoreDisplay Score="_review.OverallScore.Value" />
+                }
+                <button class="btn btn-outline-primary btn-sm" @onclick="ReRunAsync" disabled="@_reRunning">
+                    @if (_reRunning)
+                    {
+                        <span class="spinner-border spinner-border-sm me-1" role="status"></span>
+                    }
+                    else
+                    {
+                        <i class="bi bi-arrow-clockwise me-1"></i>
+                    }
+                    Re-run
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- AI Summary -->
+    @if (!string.IsNullOrEmpty(_review.Summary))
+    {
+        <div class="card border-0 bg-light mb-4">
+            <div class="card-body py-3">
+                <p class="small fw-semibold text-uppercase text-muted mb-1">
+                    <i class="bi bi-robot me-1"></i>AI Summary
+                </p>
+                <p class="mb-0">@_review.Summary</p>
+            </div>
+        </div>
+    }
+
+    <!-- Error message if review failed -->
+    @if (_review.Status == ReviewStatus.Failed && !string.IsNullOrEmpty(_review.ErrorMessage))
+    {
+        <div class="alert alert-danger mb-4">
+            <i class="bi bi-exclamation-triangle me-2"></i>@_review.ErrorMessage
+        </div>
+    }
+
+    <div class="row g-4">
+
+        <!-- Issues panel -->
+        <div class="col-lg-7">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <h5 class="fw-bold mb-0">
+                    Issues
+                    <span class="badge bg-primary ms-1">@_review.IssueCount</span>
+                </h5>
+                @if (_severityCounts.Count > 0)
+                {
+                    <div class="d-flex gap-1 align-items-center flex-wrap">
+                        @foreach (var entry in _severityCounts)
+                        {
+                            <SeverityBadge Severity="entry.Key" />
+                            <span class="badge bg-light text-dark border me-1">x@entry.Value</span>
+                        }
+                    </div>
+                }
+            </div>
+
+            @if (_review.Issues.Count == 0)
+            {
+                <div class="text-center py-5 text-muted">
+                    <i class="bi bi-check-circle-fill text-success fs-1"></i>
+                    <p class="mt-2 mb-0">No issues found — great code!</p>
+                </div>
+            }
+            else
+            {
+                <div class="d-flex flex-column gap-3">
+                    @foreach (var issue in _review.Issues.OrderByDescending(i => i.Severity))
+                    {
+                        <div class="card shadow-sm border-0 issue-card @issue.Severity.ToString().ToLowerInvariant()">
+                            <div class="card-body p-3">
+                                <div class="d-flex justify-content-between align-items-start gap-2 mb-1">
+                                    <h6 class="mb-0 fw-semibold">@issue.Title</h6>
+                                    <SeverityBadge Severity="issue.Severity" />
+                                </div>
+
+                                @if (!string.IsNullOrEmpty(issue.Category))
+                                {
+                                    <span class="badge bg-light text-secondary border small mb-2">
+                                        @issue.Category
+                                    </span>
+                                }
+
+                                @if (issue.LineStart.HasValue)
+                                {
+                                    <small class="text-muted d-block mb-1">
+                                        <i class="bi bi-code me-1"></i>
+                                        Line @issue.LineStart
+                                        @if (issue.LineEnd.HasValue && issue.LineEnd != issue.LineStart)
+                                        {
+                                            <text>–@issue.LineEnd</text>
+                                        }
+                                    </small>
+                                }
+
+                                <p class="mb-0 small">@issue.Description</p>
+
+                                @if (!string.IsNullOrEmpty(issue.SuggestedFix))
+                                {
+                                    <details class="mt-2">
+                                        <summary class="text-primary small" style="cursor:pointer">
+                                            <i class="bi bi-lightbulb me-1"></i>Suggested fix
+                                        </summary>
+                                        <pre class="code-block mt-2 small">@issue.SuggestedFix</pre>
+                                    </details>
+                                }
+                            </div>
+                        </div>
+                    }
+                </div>
+            }
+        </div>
+
+        <!-- Source code panel -->
+        <div class="col-lg-5">
+            <h5 class="fw-bold mb-3">Source Code</h5>
+            <pre class="code-block"><code>@_review.SourceCode</code></pre>
+        </div>
+
+    </div>
+}
+
+@code {
+    [Parameter] public Guid Id { get; set; }
+
+    private CodeReviewDetailDto? _review;
+    private bool _loading = true;
+    private bool _reRunning;
+    private string? _errorMessage;
+    private Dictionary<Severity, int> _severityCounts = [];
+
+    protected override async Task OnInitializedAsync()
+    {
+        var result = await ReviewService.GetByIdAsync(Id);
+
+        if (result.IsSuccess)
+        {
+            _review = result.Data;
+            BuildSeverityCounts();
+        }
+        else
+        {
+            _errorMessage = result.ErrorMessage;
+        }
+
+        _loading = false;
+    }
+
+    private async Task ReRunAsync()
+    {
+        _reRunning = true;
+        _errorMessage = null;
+
+        var result = await ReviewService.ReRunAsync(Id);
+
+        if (result.IsSuccess)
+        {
+            _review = result.Data;
+            BuildSeverityCounts();
+        }
+        else
+        {
+            _errorMessage = result.ErrorMessage;
+        }
+
+        _reRunning = false;
+    }
+
+    private void BuildSeverityCounts()
+    {
+        if (_review is null) return;
+        _severityCounts = _review.Issues
+            .GroupBy(i => i.Severity)
+            .OrderByDescending(g => (int)g.Key)
+            .ToDictionary(g => g.Key, g => g.Count());
+    }
+}

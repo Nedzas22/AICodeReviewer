@@ -1,0 +1,102 @@
+@page "/submit"
+@attribute [Authorize]
+@inject IReviewService ReviewService
+@inject NavigationManager Navigation
+
+<PageTitle>New Review — CodeLens</PageTitle>
+
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <h1 class="h3 fw-bold mb-0">New Code Review</h1>
+        <p class="text-muted small mb-0">Paste your code and let AI analyse it</p>
+    </div>
+</div>
+
+@if (_errorMessage is not null)
+{
+    <div class="alert alert-danger">
+        <i class="bi bi-exclamation-circle me-2"></i>@_errorMessage
+    </div>
+}
+
+<div class="row justify-content-center">
+    <div class="col-lg-9">
+        <div class="card shadow-sm border-0">
+            <div class="card-body p-4">
+                <EditForm Model="_model" OnValidSubmit="HandleSubmitAsync" FormName="submit-review">
+                    <DataAnnotationsValidator />
+
+                    <div class="mb-3">
+                        <label class="form-label fw-medium">Review title</label>
+                        <InputText @bind-Value="_model.Title" class="form-control"
+                                   placeholder="e.g. UserService.GetAll — performance pass" />
+                        <ValidationMessage For="() => _model.Title" class="invalid-feedback d-block small" />
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label fw-medium">Programming language</label>
+                        <InputSelect @bind-Value="_model.Language" class="form-select">
+                            @foreach (var lang in Enum.GetValues<ProgrammingLanguage>())
+                            {
+                                <option value="@lang">@lang.ToDisplayName()</option>
+                            }
+                        </InputSelect>
+                    </div>
+
+                    <div class="mb-4">
+                        <label class="form-label fw-medium">
+                            Source code
+                            <span class="text-muted fw-normal small ms-2">
+                                (@_model.SourceCode.Length.ToString("N0") / 50,000 chars)
+                            </span>
+                        </label>
+                        <InputTextArea @bind-Value="_model.SourceCode"
+                                       class="form-control font-monospace"
+                                       rows="20"
+                                       placeholder="Paste your code here..." />
+                        <ValidationMessage For="() => _model.SourceCode" class="invalid-feedback d-block small" />
+                    </div>
+
+                    <div class="d-flex gap-2">
+                        <button type="submit" class="btn btn-primary px-4" disabled="@_loading">
+                            @if (_loading)
+                            {
+                                <span class="spinner-border spinner-border-sm me-2" role="status"></span>
+                            }
+                            else
+                            {
+                                <i class="bi bi-stars me-2"></i>
+                            }
+                            Run AI Review
+                        </button>
+                        <a href="/dashboard" class="btn btn-outline-secondary">Cancel</a>
+                    </div>
+                </EditForm>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    private readonly SubmitReviewRequest _model = new();
+    private string? _errorMessage;
+    private bool _loading;
+
+    private async Task HandleSubmitAsync()
+    {
+        _loading = true;
+        _errorMessage = null;
+
+        var result = await ReviewService.SubmitAsync(_model);
+
+        if (result.IsSuccess)
+        {
+            Navigation.NavigateTo($"/reviews/{result.Data!.Id}");
+        }
+        else
+        {
+            _errorMessage = result.ErrorMessage;
+            _loading = false;
+        }
+    }
+}

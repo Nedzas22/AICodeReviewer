@@ -1,0 +1,16 @@
+@using CodeLens.Web.Models.Reviews
+
+<span class="badge @CssClass">@Status.ToDisplayName()</span>
+
+@code {
+    [Parameter, EditorRequired] public ReviewStatus Status { get; set; }
+
+    private string CssClass => Status switch
+    {
+        ReviewStatus.Completed  => "bg-success",
+        ReviewStatus.Processing => "bg-primary",
+        ReviewStatus.Pending    => "bg-secondary",
+        ReviewStatus.Failed     => "bg-danger",
+        _                       => "bg-secondary"
+    };
+}
