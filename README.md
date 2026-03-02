@@ -8,14 +8,14 @@ Built as a portfolio project to demonstrate clean architecture, API design, and 
 
 ## Screenshots
 
-**Submit a review**
+**Review Dashboard — paginated review history**
+![Dashboard](docs/screenshots/dashboard.png)
+
+**Submit a review — paste code and select language**
 ![Submit review form](docs/screenshots/submit.png)
 
 **Review detail — issues, severity badges, suggested fixes**
 ![Review detail](docs/screenshots/detail.png)
-
-**Dashboard — paginated review history**
-![Dashboard](docs/screenshots/dashboard.png)
 
 ---
 
