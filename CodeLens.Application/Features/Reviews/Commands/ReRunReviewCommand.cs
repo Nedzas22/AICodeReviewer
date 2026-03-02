@@ -1,4 +1,5 @@
 using MediatR;
+using CodeLens.Application.Common.Interfaces;
 using CodeLens.Application.DTOs;
 
 namespace CodeLens.Application.Features.Reviews.Commands;

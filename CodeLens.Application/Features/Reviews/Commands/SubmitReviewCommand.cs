@@ -1,5 +1,6 @@
 using FluentValidation;
 using MediatR;
+using CodeLens.Application.Common.Interfaces;
 using CodeLens.Application.DTOs;
 using CodeLens.Domain.Enums;
 
