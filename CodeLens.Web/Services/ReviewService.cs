@@ -1,3 +1,4 @@
+using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using CodeLens.Web.Models.Common;
@@ -25,33 +26,37 @@ internal sealed class ReviewService : IReviewService
 
     public ReviewService(HttpClient http) => _http = http;
 
-    public async Task<ServiceResult<CodeReviewDto>> SubmitAsync(
-        SubmitReviewRequest request, CancellationToken ct = default)
-    {
-        var response = await _http.PostAsJsonAsync("/api/reviews", request, ct);
-        return await ReadAsync<CodeReviewDto>(response, ct);
-    }
+    public Task<ServiceResult<CodeReviewDto>> SubmitAsync(
+        SubmitReviewRequest request, CancellationToken ct = default) =>
+        SafeCallAsync(async () =>
+        {
+            var response = await _http.PostAsJsonAsync("/api/reviews", request, ct);
+            return await ReadAsync<CodeReviewDto>(response, ct);
+        });
 
-    public async Task<ServiceResult<PagedResult<CodeReviewDto>>> GetHistoryAsync(
-        int page = 1, int pageSize = 10, CancellationToken ct = default)
-    {
-        var response = await _http.GetAsync($"/api/reviews?page={page}&pageSize={pageSize}", ct);
-        return await ReadAsync<PagedResult<CodeReviewDto>>(response, ct);
-    }
+    public Task<ServiceResult<PagedResult<CodeReviewDto>>> GetHistoryAsync(
+        int page = 1, int pageSize = 10, CancellationToken ct = default) =>
+        SafeCallAsync(async () =>
+        {
+            var response = await _http.GetAsync($"/api/reviews?page={page}&pageSize={pageSize}", ct);
+            return await ReadAsync<PagedResult<CodeReviewDto>>(response, ct);
+        });
 
-    public async Task<ServiceResult<CodeReviewDetailDto>> GetByIdAsync(
-        Guid id, CancellationToken ct = default)
-    {
-        var response = await _http.GetAsync($"/api/reviews/{id}", ct);
-        return await ReadAsync<CodeReviewDetailDto>(response, ct);
-    }
+    public Task<ServiceResult<CodeReviewDetailDto>> GetByIdAsync(
+        Guid id, CancellationToken ct = default) =>
+        SafeCallAsync(async () =>
+        {
+            var response = await _http.GetAsync($"/api/reviews/{id}", ct);
+            return await ReadAsync<CodeReviewDetailDto>(response, ct);
+        });
 
-    public async Task<ServiceResult<CodeReviewDetailDto>> ReRunAsync(
-        Guid id, CancellationToken ct = default)
-    {
-        var response = await _http.PostAsync($"/api/reviews/{id}/rerun", null, ct);
-        return await ReadAsync<CodeReviewDetailDto>(response, ct);
-    }
+    public Task<ServiceResult<CodeReviewDetailDto>> ReRunAsync(
+        Guid id, CancellationToken ct = default) =>
+        SafeCallAsync(async () =>
+        {
+            var response = await _http.PostAsync($"/api/reviews/{id}/rerun", null, ct);
+            return await ReadAsync<CodeReviewDetailDto>(response, ct);
+        });
 
     private static async Task<ServiceResult<T>> ReadAsync<T>(
         HttpResponseMessage response, CancellationToken ct)
@@ -75,5 +80,11 @@ internal sealed class ReviewService : IReviewService
         {
             return ServiceResult<T>.Failure($"Request failed ({(int)response.StatusCode}).");
         }
+    }
+
+    private static async Task<ServiceResult<T>> SafeCallAsync<T>(Func<Task<ServiceResult<T>>> call)
+    {
+        try { return await call(); }
+        catch (Exception ex) { return ServiceResult<T>.Failure($"Could not reach the server: {ex.Message}"); }
     }
 }

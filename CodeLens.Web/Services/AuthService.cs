@@ -1,3 +1,4 @@
+using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using CodeLens.Web.Models.Auth;
@@ -37,15 +38,29 @@ internal sealed class AuthService : IAuthService
     public async Task<ServiceResult<AuthResponse>> LoginAsync(
         LoginRequest request, CancellationToken ct = default)
     {
-        var response = await _http.PostAsJsonAsync("/api/auth/login", request, ct);
-        return await HandleAuthResponseAsync(response, ct);
+        try
+        {
+            var response = await _http.PostAsJsonAsync("/api/auth/login", request, ct);
+            return await HandleAuthResponseAsync(response, ct);
+        }
+        catch (Exception ex)
+        {
+            return ServiceResult<AuthResponse>.Failure($"Could not reach the server: {ex.Message}");
+        }
     }
 
     public async Task<ServiceResult<AuthResponse>> RegisterAsync(
         RegisterRequest request, CancellationToken ct = default)
     {
-        var response = await _http.PostAsJsonAsync("/api/auth/register", request, ct);
-        return await HandleAuthResponseAsync(response, ct);
+        try
+        {
+            var response = await _http.PostAsJsonAsync("/api/auth/register", request, ct);
+            return await HandleAuthResponseAsync(response, ct);
+        }
+        catch (Exception ex)
+        {
+            return ServiceResult<AuthResponse>.Failure($"Could not reach the server: {ex.Message}");
+        }
     }
 
     public async Task LogoutAsync()
