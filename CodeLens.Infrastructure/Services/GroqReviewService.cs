@@ -1,8 +1,9 @@
+using System.Net.Http.Headers;
+using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using OpenAI.Chat;
 using CodeLens.Application.Common.Interfaces;
 using CodeLens.Application.Common.Models;
 using CodeLens.Domain.Enums;
@@ -11,26 +12,30 @@ using CodeLens.Infrastructure.Settings;
 namespace CodeLens.Infrastructure.Services;
 
 /// <summary>
-/// Calls the OpenAI Chat Completions API and parses the structured JSON response
-/// into an <see cref="AiReviewResult"/>. Uses JSON mode to guarantee valid JSON output.
+/// Calls the Groq Chat Completions API (OpenAI-compatible) and parses the structured
+/// JSON response into an <see cref="AiReviewResult"/>.
 /// </summary>
-internal sealed class OpenAiReviewService : IAiReviewService
+internal sealed class GroqReviewService : IAiReviewService
 {
+    private const string BaseUrl = "https://api.groq.com/openai/v1/chat/completions";
+
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         PropertyNameCaseInsensitive = true,
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
     };
 
-    private readonly OpenAiSettings _settings;
-    private readonly ILogger<OpenAiReviewService> _logger;
+    private readonly GroqSettings _settings;
+    private readonly HttpClient _http;
+    private readonly ILogger<GroqReviewService> _logger;
 
-    /// <summary>Initialises the service with OpenAI settings and a logger.</summary>
-    public OpenAiReviewService(
-        IOptions<OpenAiSettings> options,
-        ILogger<OpenAiReviewService> logger)
+    public GroqReviewService(
+        IOptions<GroqSettings> options,
+        HttpClient http,
+        ILogger<GroqReviewService> logger)
     {
         _settings = options.Value;
+        _http = http;
         _logger = logger;
     }
 
@@ -40,38 +45,55 @@ internal sealed class OpenAiReviewService : IAiReviewService
         ProgrammingLanguage language,
         CancellationToken cancellationToken = default)
     {
-        var client = new ChatClient(_settings.Model, _settings.ApiKey);
+        _http.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer", _settings.ApiKey);
 
-        var messages = new List<ChatMessage>
+        var requestBody = new GroqRequest
         {
-            new SystemChatMessage(BuildSystemPrompt()),
-            new UserChatMessage(BuildUserPrompt(sourceCode, language))
-        };
-
-        var options = new ChatCompletionOptions
-        {
-            ResponseFormat = ChatResponseFormat.CreateJsonObjectFormat(),
-            MaxOutputTokenCount = _settings.MaxOutputTokens
+            Model = _settings.Model,
+            Messages =
+            [
+                new GroqMessage { Role = "system", Content = BuildSystemPrompt() },
+                new GroqMessage { Role = "user",   Content = BuildUserPrompt(sourceCode, language) }
+            ],
+            ResponseFormat = new GroqResponseFormat { Type = "json_object" },
+            MaxTokens = _settings.MaxOutputTokens
         };
 
         _logger.LogInformation(
-            "Calling OpenAI model {Model} for {Language} code review ({Chars} chars)",
+            "Calling Groq model {Model} for {Language} code review ({Chars} chars)",
             _settings.Model, language, sourceCode.Length);
 
-        var completion = await client.CompleteChatAsync(messages, options, cancellationToken);
-        var json = completion.Value.Content[0].Text;
+        var response = await _http.PostAsJsonAsync(BaseUrl, requestBody, JsonOptions, cancellationToken);
 
-        if (string.IsNullOrWhiteSpace(json))
-            throw new InvalidOperationException("OpenAI returned an empty response.");
+        if (!response.IsSuccessStatusCode)
+        {
+            var errorBody = await response.Content.ReadAsStringAsync(cancellationToken);
+            _logger.LogError("Groq API error {Status}: {Body}", (int)response.StatusCode, errorBody);
+
+            var message = (int)response.StatusCode switch
+            {
+                429 => "Groq API rate limit reached. Please wait a moment and try again.",
+                401 => "Groq API key is invalid. Set a new key via: dotnet user-secrets set \"Groq:ApiKey\" \"YOUR_KEY\"",
+                _   => $"Groq API returned {(int)response.StatusCode}: {errorBody}"
+            };
+            throw new InvalidOperationException(message);
+        }
+
+        var groqResponse = await response.Content.ReadFromJsonAsync<GroqResponse>(JsonOptions, cancellationToken)
+            ?? throw new InvalidOperationException("Groq returned an empty response.");
+
+        var json = groqResponse.Choices?[0]?.Message?.Content
+            ?? throw new InvalidOperationException("Groq returned no content.");
 
         var parsed = JsonSerializer.Deserialize<AiResponseJson>(json, JsonOptions)
-            ?? throw new InvalidOperationException("OpenAI returned an unparseable JSON response.");
+            ?? throw new InvalidOperationException("Groq returned an unparseable JSON response.");
 
         return MapToResult(parsed);
     }
 
     // ──────────────────────────────────────────────────────────────────────────
-    // Private helpers
+    // Prompt builders
     // ──────────────────────────────────────────────────────────────────────────
 
     private static string BuildSystemPrompt() => """
@@ -108,12 +130,12 @@ internal sealed class OpenAiReviewService : IAiReviewService
         return $"Please review the following {langName} code:\n\n```{langName.ToLower()}\n{sourceCode}\n```";
     }
 
-    private static AiReviewResult MapToResult(AiResponseJson json) =>
+    private AiReviewResult MapToResult(AiResponseJson json) =>
         new()
         {
             Summary = json.Summary ?? "No summary provided.",
             OverallScore = Math.Clamp(json.OverallScore, 0, 100),
-            Model = "gpt-4o",
+            Model = _settings.Model,
             Issues = json.Issues
                 .Select(i => new AiReviewIssue
                 {
@@ -129,7 +151,40 @@ internal sealed class OpenAiReviewService : IAiReviewService
         };
 
     // ──────────────────────────────────────────────────────────────────────────
-    // Private JSON deserialization models (internal to this service)
+    // Groq API request / response models (OpenAI-compatible)
+    // ──────────────────────────────────────────────────────────────────────────
+
+    private sealed class GroqRequest
+    {
+        [JsonPropertyName("model")]           public string Model { get; init; } = default!;
+        [JsonPropertyName("messages")]        public List<GroqMessage> Messages { get; init; } = [];
+        [JsonPropertyName("response_format")] public GroqResponseFormat? ResponseFormat { get; init; }
+        [JsonPropertyName("max_tokens")]      public int MaxTokens { get; init; }
+    }
+
+    private sealed class GroqMessage
+    {
+        [JsonPropertyName("role")]    public string Role { get; init; } = default!;
+        [JsonPropertyName("content")] public string Content { get; init; } = default!;
+    }
+
+    private sealed class GroqResponseFormat
+    {
+        [JsonPropertyName("type")] public string Type { get; init; } = default!;
+    }
+
+    private sealed class GroqResponse
+    {
+        [JsonPropertyName("choices")] public List<GroqChoice>? Choices { get; init; }
+    }
+
+    private sealed class GroqChoice
+    {
+        [JsonPropertyName("message")] public GroqMessage? Message { get; init; }
+    }
+
+    // ──────────────────────────────────────────────────────────────────────────
+    // Review JSON deserialization models
     // ──────────────────────────────────────────────────────────────────────────
 
     private sealed class AiResponseJson
