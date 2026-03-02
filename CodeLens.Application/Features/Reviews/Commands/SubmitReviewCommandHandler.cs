@@ -9,10 +9,6 @@ using CodeLens.Domain.Interfaces;
 
 namespace CodeLens.Application.Features.Reviews.Commands;
 
-/// <summary>
-/// Handles <see cref="SubmitReviewCommand"/>.
-/// Flow: create review → call AI → complete / fail → persist.
-/// </summary>
 public sealed class SubmitReviewCommandHandler : IRequestHandler<SubmitReviewCommand, CodeReviewDto>
 {
     private readonly IUnitOfWork _unitOfWork;
@@ -21,7 +17,6 @@ public sealed class SubmitReviewCommandHandler : IRequestHandler<SubmitReviewCom
     private readonly IMapper _mapper;
     private readonly ILogger<SubmitReviewCommandHandler> _logger;
 
-    /// <summary>Initialises the handler with all required dependencies.</summary>
     public SubmitReviewCommandHandler(
         IUnitOfWork unitOfWork,
         IAiReviewService aiReviewService,
@@ -36,7 +31,6 @@ public sealed class SubmitReviewCommandHandler : IRequestHandler<SubmitReviewCom
         _logger = logger;
     }
 
-    /// <inheritdoc />
     public async Task<CodeReviewDto> Handle(SubmitReviewCommand request, CancellationToken cancellationToken)
     {
         var userId = _currentUserService.UserId
@@ -63,7 +57,6 @@ public sealed class SubmitReviewCommandHandler : IRequestHandler<SubmitReviewCom
             review.Fail($"AI analysis failed: {ex.Message}");
         }
 
-        // Single AddAsync call cascades to all ReviewIssues in the graph
         await _unitOfWork.CodeReviews.AddAsync(review, cancellationToken);
         await _unitOfWork.SaveChangesAsync(cancellationToken);
 

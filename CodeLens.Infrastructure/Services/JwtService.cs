@@ -8,17 +8,12 @@ using CodeLens.Infrastructure.Settings;
 
 namespace CodeLens.Infrastructure.Services;
 
-/// <summary>
-/// Generates and validates signed JWT access tokens using HMAC-SHA256.
-/// </summary>
 internal sealed class JwtService : IJwtService
 {
     private readonly JwtSettings _settings;
 
-    /// <summary>Initialises the service with JWT configuration.</summary>
     public JwtService(IOptions<JwtSettings> options) => _settings = options.Value;
 
-    /// <inheritdoc />
     public (string Token, DateTime ExpiresAt) GenerateToken(string userId, string email, string displayName)
     {
         var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_settings.SecretKey));
@@ -47,7 +42,6 @@ internal sealed class JwtService : IJwtService
         return (handler.WriteToken(handler.CreateToken(descriptor)), expiresAt);
     }
 
-    /// <inheritdoc />
     public (bool IsValid, string? UserId) ValidateToken(string token)
     {
         try

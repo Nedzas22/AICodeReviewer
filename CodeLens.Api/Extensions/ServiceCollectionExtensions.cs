@@ -13,33 +13,19 @@ using CodeLens.Infrastructure.Settings;
 
 namespace CodeLens.Api.Extensions;
 
-/// <summary>
-/// Extension methods for registering API-layer services — controllers, authentication,
-/// authorisation, CORS, and Swagger — with the DI container.
-/// </summary>
 public static class ServiceCollectionExtensions
 {
-    /// <summary>
-    /// Adds all API-layer services: controllers (with JSON enum support), JWT Bearer auth,
-    /// CORS policy, <see cref="ICurrentUserService"/>, and Swagger/OpenAPI.
-    /// </summary>
-    /// <param name="services">The service collection to configure.</param>
-    /// <param name="configuration">The application configuration.</param>
-    /// <returns>The same <paramref name="services"/> for chaining.</returns>
     public static IServiceCollection AddApiServices(
         this IServiceCollection services,
         IConfiguration configuration)
     {
-        // ── Controllers ───────────────────────────────────────────────────────
         services.AddControllers()
             .AddJsonOptions(opts =>
                 opts.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter()));
 
-        // ── Current user (reads JWT claims from IHttpContextAccessor) ─────────
         services.AddHttpContextAccessor();
         services.AddScoped<ICurrentUserService, CurrentUserService>();
 
-        // ── JWT Authentication ────────────────────────────────────────────────
         var jwtSettings = configuration.GetSection(JwtSettings.SectionName).Get<JwtSettings>()
             ?? throw new InvalidOperationException(
                 $"'{JwtSettings.SectionName}' configuration section is missing.");
@@ -52,7 +38,7 @@ public static class ServiceCollectionExtensions
             })
             .AddJwtBearer(options =>
             {
-                // Keep raw claim names (sub, email) instead of mapping to MS claim URIs
+                // Preserve raw claim names (sub, email) instead of mapping to MS claim URIs
                 options.MapInboundClaims = false;
 
                 options.TokenValidationParameters = new TokenValidationParameters
@@ -72,7 +58,6 @@ public static class ServiceCollectionExtensions
 
         services.AddAuthorization();
 
-        // ── CORS ──────────────────────────────────────────────────────────────
         var allowedOrigins = configuration
             .GetValue<string>("Cors:AllowedOrigins")
             ?.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
@@ -84,7 +69,6 @@ public static class ServiceCollectionExtensions
                       .AllowAnyHeader()
                       .AllowAnyMethod()));
 
-        // ── Swagger / OpenAPI ─────────────────────────────────────────────────
         services.AddEndpointsApiExplorer();
         services.AddSwaggerGen(opts =>
         {
@@ -96,7 +80,6 @@ public static class ServiceCollectionExtensions
                 Contact     = new OpenApiContact { Name = "CodeLens" }
             });
 
-            // Include XML doc comments generated from /// summaries
             var xmlPath = Path.Combine(
                 AppContext.BaseDirectory,
                 $"{Assembly.GetExecutingAssembly().GetName().Name}.xml");
@@ -104,7 +87,6 @@ public static class ServiceCollectionExtensions
             if (File.Exists(xmlPath))
                 opts.IncludeXmlComments(xmlPath);
 
-            // JWT Bearer token UI in Swagger
             opts.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
             {
                 Name        = "Authorization",
@@ -131,9 +113,6 @@ public static class ServiceCollectionExtensions
             });
         });
 
-        // ── Rate limiting ─────────────────────────────────────────────────────
-        // Fixed window: 10 requests per minute per IP, applied only to auth endpoints
-        // via [EnableRateLimiting(AuthController.RateLimitPolicy)].
         services.AddRateLimiter(options =>
         {
             options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;

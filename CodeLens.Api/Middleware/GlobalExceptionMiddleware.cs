@@ -6,11 +6,6 @@ using CodeLens.Application.Common.Exceptions;
 
 namespace CodeLens.Api.Middleware;
 
-/// <summary>
-/// ASP.NET Core middleware that catches all unhandled exceptions thrown by the request pipeline
-/// and converts them into RFC-7807-compliant <c>application/problem+json</c> responses.
-/// Prevents stack traces leaking to clients in production.
-/// </summary>
 public sealed class GlobalExceptionMiddleware
 {
     private static readonly JsonSerializerOptions SerializerOptions = new()
@@ -22,14 +17,12 @@ public sealed class GlobalExceptionMiddleware
     private readonly RequestDelegate _next;
     private readonly ILogger<GlobalExceptionMiddleware> _logger;
 
-    /// <summary>Initialises the middleware with the next delegate and a logger.</summary>
     public GlobalExceptionMiddleware(RequestDelegate next, ILogger<GlobalExceptionMiddleware> logger)
     {
         _next = next;
         _logger = logger;
     }
 
-    /// <summary>Invokes the middleware, wrapping exceptions in structured JSON responses.</summary>
     public async Task InvokeAsync(HttpContext context)
     {
         try
@@ -65,16 +58,11 @@ public sealed class GlobalExceptionMiddleware
         }
     }
 
-    // ──────────────────────────────────────────────────────────────────────────
-    // Private helpers
-    // ──────────────────────────────────────────────────────────────────────────
-
     private async Task WriteValidationProblemAsync(HttpContext context, ValidationException ex)
     {
         context.Response.StatusCode = StatusCodes.Status400BadRequest;
         context.Response.ContentType = "application/problem+json";
 
-        // Produces a payload compatible with RFC 7807 + ASP.NET Core's ValidationProblemDetails
         var problem = new
         {
             type = RfcLink(400),
